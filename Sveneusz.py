@@ -34,15 +34,20 @@ ytdl_format_options = {
     'quiet': True,
     'no_warnings': True,
     'default_search': 'ytsearch',
-    'source_address': '0.0.0.0'
+    'source_address': '0.0.0.0',
+    'reconnect': True
 }
 
 ffmpeg_options = {
-    'options': '-vn -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -reconnect_at_eof 1'
+    'options': '-vn -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
+    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -nostdin'
 }
+
+
 
 ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
 song_queue = deque()
+
 
 class YTDLSource(discord.PCMVolumeTransformer):
     def __init__(self, source, *, data, volume=0.5):
@@ -52,24 +57,35 @@ class YTDLSource(discord.PCMVolumeTransformer):
         self.url = data.get('url')
 
     @classmethod
-    async def from_url(cls, url, *, loop=None, stream=True):
+    async def from_url(cls, url, *, loop=None, stream=True, retry_attempts=5):
         loop = loop or asyncio.get_event_loop()
-        try:
-            async with yt_dlp_lock:
-                data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
+        attempt = 0
+        while attempt < retry_attempts:
+            try:
+                async with yt_dlp_lock:
+                    data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
 
-            if data is None:
-                raise ValueError("Błąd: yt-dlp zwrócił `None` podczas pobierania danych o utworze.")
+                if data is None:
+                    raise ValueError("Błąd: yt-dlp zwrócił `None` podczas pobierania danych o utworze.")
 
-            if 'entries' in data:
-                data = data['entries'][0]
+                if 'entries' in data:
+                    data = data['entries'][0]
 
-            filename = data['url'] if stream else ytdl.prepare_filename(data)
-            return cls(discord.FFmpegPCMAudio(executable="ffmpeg", source=filename, options=ffmpeg_options['options']), data=data)
+                filename = data['url'] if stream else ytdl.prepare_filename(data)
 
-        except Exception as e:
-            raise ValueError(f"Nie udało się znaleźć utworu. Błąd: {e}")
+                return cls(discord.FFmpegPCMAudio(
+                    executable="ffmpeg",
+                    source=filename,
+                    before_options=ffmpeg_options['before_options'],
+                    options=ffmpeg_options['options']
+                ), data=data)
 
+            except Exception as e:
+                print(f"⚠️ Błąd podczas odtwarzania: {e}. Próba ponowienia ({attempt + 1}/{retry_attempts})...")
+                attempt += 1
+                await asyncio.sleep(2)  # Odczekaj chwilę przed ponowieniem próby
+
+        raise ValueError(f"❌ Nie udało się odtworzyć utworu po {retry_attempts} próbach.")
 
 
 async def play_next(ctx):
@@ -172,7 +188,7 @@ async def bania(ctx):
     if not voice_client.is_playing():
         await play_next(ctx)
 
-@bot.command(name='play_first')
+@bot.command(name='play_first',aliases=['play_next','pn','pf'])
 async def play_first(ctx, *, query):
     voice_client = ctx.voice_client
     if not voice_client or not voice_client.is_connected():
