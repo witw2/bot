@@ -35,7 +35,8 @@ ytdl_format_options = {
     'no_warnings': True,
     'default_search': 'ytsearch',
     'source_address': '0.0.0.0',
-    'reconnect': True
+    'reconnect': True,
+    'cookiefile': 'cookies.txt'
 }
 
 ffmpeg_options = {
