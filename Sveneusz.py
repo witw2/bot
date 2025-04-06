@@ -5,9 +5,27 @@ import yt_dlp as youtube_dl
 import nacl
 from collections import deque
 import random
-
+import os
 from collections import defaultdict
 from datetime import datetime
+import logging
+import sys
+
+log_channel = None  # Kanał do logów zostanie ustawiony po starcie bota
+
+class DiscordLogHandler(logging.Handler):
+    def emit(self, record):
+        log_entry = self.format(record)
+        asyncio.create_task(send_log_to_discord(log_entry))
+
+async def send_log_to_discord(message):
+    global log_channel
+    if log_channel:
+        try:
+            await log_channel.send(f"📝 {message}")
+        except Exception as e:
+            print(f"Błąd przy wysyłaniu loga na Discord: {e}")
+
 
 
 f = open("figo", "r", encoding="utf-8")
@@ -24,6 +42,7 @@ yt_dlp_lock = asyncio.Lock()  # Blokada dla operacji yt-dlp
 
 youtube_dl.utils.bug_reports_message = lambda: ''
 
+
 ytdl_format_options = {
     'format': 'bestaudio/best',
     'restrictfilenames': True,
@@ -36,7 +55,6 @@ ytdl_format_options = {
     'default_search': 'ytsearch',
     'source_address': '0.0.0.0',
     'reconnect': True,
-    'cookiefile': 'cookies.txt'
 }
 
 ffmpeg_options = {
@@ -202,6 +220,37 @@ async def play_first(ctx, *, query):
     else:
         await ctx.send(f"🎶 **Added to the front of the queue:** {query}")
 
+@bot.command(name='cookies')
+async def download_cookies(ctx):
+    # Zmień to na ID kanału 'cookies' jeśli znasz:
+    cookies_channel_name = "cookies"
+
+    # Znajdź kanał tekstowy o nazwie "cookies"
+    cookies_channel = discord.utils.get(ctx.guild.text_channels, name=cookies_channel_name)
+
+    if not cookies_channel:
+        await ctx.send("🚫 Nie znaleziono kanału o nazwie 'cookies'.")
+        return
+
+    # Przeszukaj historię wiadomości w kanale
+    async for message in cookies_channel.history(limit=50):  # Możesz zwiększyć limit
+        for attachment in message.attachments:
+            if attachment.filename == "cookies.txt":
+                await ctx.send("📥 Pobieram plik cookies.txt...")
+
+                # Pobierz zawartość pliku
+                file_bytes = await attachment.read()
+
+                # Zapisz do lokalnego pliku
+                with open("cookies.txt", "wb") as f:
+                    f.write(file_bytes)
+
+                await ctx.send("✅ Plik cookies.txt został zapisany lokalnie.")
+                return
+
+    await ctx.send("⚠️ Nie znaleziono żadnego pliku `cookies.txt` w ostatnich wiadomościach.")
+
+
 @bot.command(name='skip')
 async def skip(ctx):
     voice_client = ctx.voice_client
@@ -343,7 +392,14 @@ async def stats(ctx):
 
 @bot.event
 async def on_ready():
-    print("✅ Bot is online and ready to use!")
+    global log_channel
+    log_channel = discord.utils.get(bot.get_all_channels(), name="logi")
+
+    if log_channel:
+        await log_channel.send("✅ Bot is online and logging enabled.")
+    else:
+        print("⚠️ Kanał #logi nie został znaleziony.")
+
 
 DISCORD_TOKEN = "MTExMzQ5MjU0NjE0NDk3NjkwNg.GNxY-w.s_R1wbL85jB9amS4pE6g9JNXYSm5ToB5xMKPHM"
 
