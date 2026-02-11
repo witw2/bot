@@ -402,7 +402,7 @@ async def on_ready():
         print("⚠️ Kanał #logi nie został znaleziony.")
 
 
-DISCORD_TOKEN = "MTExMzQ5MjU0NjE0NDk3NjkwNg.GNxY-w.s_R1wbL85jB9amS4pE6g9JNXYSm5ToB5xMKPHM"
+DISCORD_TOKEN = "DISCORD_BOT_TOKEN"
 
 if __name__ == "__main__":
     bot.run(DISCORD_TOKEN)
